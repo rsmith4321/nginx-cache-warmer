@@ -1,16 +1,10 @@
 #!/bin/bash
 
-# Check if a sitemap URL is provided as an argument
-if [ -z "$1" ]; then
-  echo "Usage: $0 <sitemap_url> [<time_zone>]"
-  exit 1
-fi
-
-# URL for the sitemap index (passed as the first argument)
-SITEMAP_INDEX_URL="$1"
+# Hardcoded sitemap URL For Security Reasons
+SITEMAP_INDEX_URL="https://example.com/sitemap.xml"  # Change to your sitemap URL
 
 # Optional time zone (passed as the second argument), defaulting to UTC
-TIME_ZONE="${2:-UTC}"
+TIME_ZONE="${1:-UTC}"
 
 # Directory where the script is located
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
