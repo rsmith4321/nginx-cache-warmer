@@ -1,9 +1,15 @@
 #!/bin/bash
 
-# Hardcoded sitemap URL For Security Reasons
+# Hardcoded sitemap URL
 SITEMAP_INDEX_URL="https://example.com/sitemap.xml"  # Change to your sitemap URL
 
-# Optional time zone (passed as the second argument), defaulting to UTC
+# Check for the time zone argument
+if [ $# -gt 1 ]; then
+  echo "Usage: $0 [<time_zone>]"
+  exit 1
+fi
+
+# Optional time zone (passed as the first argument), defaulting to UTC
 TIME_ZONE="${1:-UTC}"
 
 # Directory where the script is located
