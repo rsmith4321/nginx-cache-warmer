@@ -5,3 +5,4 @@ I wanted a script that would simply load every page on a website based on a Site
 Put this script in a directory on the website, such as /warmcache/warm-cache.sh. Make the script executable "chmod +x warm-cache.sh".
 Run the script using ./warm-cache.sh "https://example.com/sitemap.xml" "America/New_York"
 You can set the script to run every hour using crontab -e then adding 0 * * * * /path/to/your/script/warm_cache.sh <sitemap_url> [<time_zone>] > /dev/null 2>&1
+It will create a nice log file that can be viewed by visiting the directory. The file will be at /warmcache/index.html.
