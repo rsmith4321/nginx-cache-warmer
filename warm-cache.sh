@@ -2,49 +2,21 @@
 
 set -e  # Exit immediately if a command exits with a non-zero status
 
-# Hardcoded sitemap URL
 SITEMAP_INDEX_URL="https://example.com/sitemap.xml"  # Change to your sitemap URL
-
-# Check for time zone argument
-if [ $# -gt 1 ]; then
-  echo "Usage: $0 [<time_zone>]"
-  exit 1
-fi
-
-# Optional time zone (passed as the first argument), defaulting to UTC
 TIME_ZONE="${1:-UTC}"
-
-# Directory paths
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-LOG_DIR="$SCRIPT_DIR/logs"
-CURRENT_LOG_FILE="$SCRIPT_DIR/index.html"
-TEMP_LOG_FILE="$SCRIPT_DIR/temp_log.html"
+LOG_FILE="$SCRIPT_DIR/index.html"
+TEMP_LOG="$SCRIPT_DIR/temp_log.txt"
 
-# Ensure the log directory exists
-mkdir -p "$LOG_DIR"
-
-# Functions for date formatting
-format_date() {
-  TZ="$TIME_ZONE" date "+%Y-%m-%d %H:%M:%S"
-}
-
-format_date_filename() {
-  TZ="$TIME_ZONE" date "+%Y-%m-%d_%H-%M-%S"
-}
-
-# Rotate current log if it is older than 24 hours
-echo "Checking if the current log file needs rotation..."
-if [ -f "$CURRENT_LOG_FILE" ] && [ "$(find "$CURRENT_LOG_FILE" -mmin +1440)" ]; then
-  echo "Log file is older than 24 hours. Rotating..."
-  mv "$CURRENT_LOG_FILE" "$LOG_DIR/index_$(format_date_filename).html"
-else
-  echo "No log rotation needed."
+# Create or rotate log file
+if [ -f "$LOG_FILE" ] && [ "$(find "$LOG_FILE" -mmin +1440)" ]; then
+    mv "$LOG_FILE" "$SCRIPT_DIR/logs/index_$(TZ=$TIME_ZONE date +%Y-%m-%d_%H-%M-%S).html"
 fi
 
-# Create a new log file with the initial HTML structure if it doesn't exist or was rotated
-if [ ! -f "$CURRENT_LOG_FILE" ]; then
-  echo "Creating a new log file: $CURRENT_LOG_FILE"
-  cat <<EOF > "$CURRENT_LOG_FILE"
+# Initialize log file if it doesn't exist
+if [ ! -f "$LOG_FILE" ]; then
+    mkdir -p "$SCRIPT_DIR/logs"
+    cat > "$LOG_FILE" <<EOF
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -52,98 +24,84 @@ if [ ! -f "$CURRENT_LOG_FILE" ]; then
     <title>Cache Warming Log</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 10px; background-color: #f4f4f9; font-size: 12px; }
-        .log-entry { padding: 2px 0; line-height: 0 }
+        .log-entry { padding: 2px 0; line-height: 0; }
         .success { color: green; }
         .error { color: red; font-weight: bold; }
         .status { color: blue; }
         .timestamp { font-weight: bold; color: #555; }
+        .log-section {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin: 10px 0;
+            padding: 10px;
+            background-color: white;
+        }
+        .section-header {
+            font-size: 14px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 10px;
+            padding-bottom: 5px;
+            border-bottom: 1px solid #eee;
+        }
     </style>
 </head>
 <body>
-    <h1>Cache Warming Log - $(TZ="$TIME_ZONE" date '+%Y-%m-%d')</h1>
-    <div>
+    <h1>Cache Warming Log - $(TZ=$TIME_ZONE date '+%Y-%m-%d')</h1>
+    <div class="log-container">
+    </div>
+</body>
+</html>
 EOF
-else
-  echo "Log file already exists and is up-to-date."
 fi
 
-# Start the temporary log file
-echo "Starting temporary log file: $TEMP_LOG_FILE"
-echo "<div>" > "$TEMP_LOG_FILE"
+# Initialize temporary log file with section header
+CURRENT_TIME=$(TZ=$TIME_ZONE date '+%Y-%m-%d %H:%M:%S')
+cat > "$TEMP_LOG" <<EOF
+    <div class="log-section">
+        <div class="section-header">Cache Warming Session - $CURRENT_TIME</div>
+EOF
 
-# Fetch sitemap and extract URLs
-echo "Fetching sitemap index..."
-echo "<p class='log-entry'><span class='timestamp'>[$(format_date)]</span> Fetching sitemap index: $SITEMAP_INDEX_URL...</p>" >> "$TEMP_LOG_FILE"
-if ! curl -s "$SITEMAP_INDEX_URL" | grep -oE '<loc>[^<]+</loc>' | sed -e 's/<loc>//g' -e 's|</loc>||g' > "$SCRIPT_DIR/sitemap_list.txt"; then
-  echo "Error: Failed to fetch or parse sitemap."
-  echo "<p class='log-entry error'><span class='timestamp'>[$(format_date)]</span> Failed to fetch or parse sitemap.</p>" >> "$TEMP_LOG_FILE"
-  exit 1
-fi
+# Function to add log entry
+log_entry() {
+    local message=$1
+    local class=${2:-}
+    local timestamp=$(TZ=$TIME_ZONE date '+%Y-%m-%d %H:%M:%S')
+    echo "        <p class='log-entry${class:+ }${class}'><span class='timestamp'>[$timestamp]</span> $message</p>" >> "$TEMP_LOG"
+}
 
-if [ ! -s "$SCRIPT_DIR/sitemap_list.txt" ]; then
-  echo "No sitemap URLs found."
-  echo "<p class='log-entry error'><span class='timestamp'>[$(format_date)]</span> No sitemap URLs found.</p>" >> "$TEMP_LOG_FILE"
-  echo "</div>" >> "$TEMP_LOG_FILE"
-  cat "$TEMP_LOG_FILE" "$CURRENT_LOG_FILE" > "${CURRENT_LOG_FILE}.tmp" && mv "${CURRENT_LOG_FILE}.tmp" "$CURRENT_LOG_FILE"
-  rm "$TEMP_LOG_FILE"
-  exit 1
-fi
+# Start logging
+log_entry "Starting cache warming session..."
 
-# Extract page URLs from sitemap
-echo "Extracting page URLs..."
-echo "<p class='log-entry'><span class='timestamp'>[$(format_date)]</span> Extracting page URLs...</p>" >> "$TEMP_LOG_FILE"
-> "$SCRIPT_DIR/page_urls.txt"
-
-while read -r sitemap_url; do
-  echo "Processing sitemap URL: $sitemap_url"
-  echo "<p class='log-entry'><span class='timestamp'>[$(format_date)]</span> Processing: $sitemap_url</p>" >> "$TEMP_LOG_FILE"
-  if ! curl -s "$sitemap_url" | grep -oE '<loc>[^<]+</loc>' | sed -e 's/<loc>//g' -e 's|</loc>||g' >> "$SCRIPT_DIR/page_urls.txt"; then
-    echo "Error: Failed to process $sitemap_url"
-    echo "<p class='log-entry error'><span class='timestamp'>[$(format_date)]</span> Failed to process: $sitemap_url</p>" >> "$TEMP_LOG_FILE"
-  fi
-done < "$SCRIPT_DIR/sitemap_list.txt"
-
-if [ ! -s "$SCRIPT_DIR/page_urls.txt" ]; then
-  echo "No page URLs found."
-  echo "<p class='log-entry error'><span class='timestamp'>[$(format_date)]</span> No page URLs found.</p>" >> "$TEMP_LOG_FILE"
-  rm "$SCRIPT_DIR/sitemap_list.txt"
-  echo "</div>" >> "$TEMP_LOG_FILE"
-  cat "$TEMP_LOG_FILE" "$CURRENT_LOG_FILE" > "${CURRENT_LOG_FILE}.tmp" && mv "${CURRENT_LOG_FILE}.tmp" "$CURRENT_LOG_FILE"
-  rm "$TEMP_LOG_FILE"
-  exit 1
-fi
-
-# Visit each page URL
-echo "Visiting page URLs..."
-echo "<p class='log-entry'><span class='timestamp'>[$(format_date)]</span> Visiting URLs...</p>" >> "$TEMP_LOG_FILE"
-while read -r url; do
-  echo "Visiting URL: $url"
-  http_status=$(curl -s -o /dev/null -w "%{http_code}" "$url")
-  echo "Status for $url: $http_status"
-  echo "<p class='log-entry'><span class='timestamp'>[$(format_date)]</span> $url - Status: <span class='status'>$http_status</span></p>" >> "$TEMP_LOG_FILE"
-  sleep 1  # Rate limiting
-done < "$SCRIPT_DIR/page_urls.txt"
-
-# Clean up intermediate files
-rm "$SCRIPT_DIR/sitemap_list.txt" "$SCRIPT_DIR/page_urls.txt"
-
-# Finalize the log
-echo "<p class='log-entry success'><span class='timestamp'>[$(format_date)]</span> Completed.</p>" >> "$TEMP_LOG_FILE"
-echo "</div>" >> "$TEMP_LOG_FILE"
-
-# Append new logs to the current log file while maintaining the full structure
-echo "Appending logs to the current log file..."
+# Process sitemap and warm cache
 {
-  head -n -2 "$CURRENT_LOG_FILE"
-  cat "$TEMP_LOG_FILE"
-  echo "</body></html>"
-} > "${CURRENT_LOG_FILE}.tmp" && mv "${CURRENT_LOG_FILE}.tmp" "$CURRENT_LOG_FILE"
+    # Get all URLs from sitemap index and sub-sitemaps
+    curl -s "$SITEMAP_INDEX_URL" | grep -oE '<loc>[^<]+</loc>' | sed -e 's/<loc>//g' -e 's|</loc>||g' | while read -r sitemap; do
+        log_entry "Processing sitemap: $sitemap"
+        curl -s "$sitemap" | grep -oE '<loc>[^<]+</loc>' | sed -e 's/<loc>//g' -e 's|</loc>||g' | while read -r url; do
+            echo "Visiting: $url"
+            http_status=$(curl -s -o /dev/null -w "%{http_code}" "$url")
+            log_entry "$url - Status: <span class='status'>$http_status</span>"
+            sleep 1
+        done
+    done
+} || {
+    log_entry "Failed to process sitemap" "error"
+    echo "    </div>" >> "$TEMP_LOG"
+    # Insert the new section at the top of the log container
+    sed -i.bak "/class=\"log-container\">/r $TEMP_LOG" "$LOG_FILE"
+    rm "$LOG_FILE.bak" "$TEMP_LOG"
+    exit 1
+}
 
-# Clean up temporary log file
-rm "$TEMP_LOG_FILE"
+log_entry "Cache warming completed" "success"
 
-# Delete logs older than 7 days
-echo "Deleting logs older than 7 days in $LOG_DIR..."
-find "$LOG_DIR" -type f -name "index_*.html" -mtime +7 -exec rm {} \;
+# Close the log section
+echo "    </div>" >> "$TEMP_LOG"
 
-echo "Script completed successfully."
+# Insert the new section at the top of the log container
+sed -i.bak "/class=\"log-container\">/r $TEMP_LOG" "$LOG_FILE"
+rm "$LOG_FILE.bak" "$TEMP_LOG"
+
+# Clean up old logs
+find "$SCRIPT_DIR/logs" -type f -name "index_*.html" -mtime +7 -exec rm {} \;
