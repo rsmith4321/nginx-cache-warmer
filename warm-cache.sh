@@ -8,6 +8,9 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG_FILE="$SCRIPT_DIR/index.html"
 TEMP_LOG="$SCRIPT_DIR/temp_log.txt"
 
+# Define User-Agent string
+USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
 # Create or rotate log file
 if [ -f "$LOG_FILE" ] && [ "$(find "$LOG_FILE" -mmin +1440)" ]; then
     mv "$LOG_FILE" "$SCRIPT_DIR/logs/index_$(TZ=$TIME_ZONE date +%Y-%m-%d_%H-%M-%S).html"
@@ -76,11 +79,11 @@ log_entry "Starting cache warming session..."
 # Process sitemap and warm cache
 {
     # Get all URLs from sitemap index and sub-sitemaps
-    curl -s "$SITEMAP_INDEX_URL" | grep -oE '<loc>[^<]+</loc>' | sed -e 's/<loc>//g' -e 's|</loc>||g' | while read -r sitemap; do
+    curl -s -A "$USER_AGENT" "$SITEMAP_INDEX_URL" | grep -oE '<loc>[^<]+</loc>' | sed -e 's/<loc>//g' -e 's|</loc>||g' | while read -r sitemap; do
         log_entry "Processing sitemap: $sitemap"
-        curl -s "$sitemap" | grep -oE '<loc>[^<]+</loc>' | sed -e 's/<loc>//g' -e 's|</loc>||g' | while read -r url; do
+        curl -s -A "$USER_AGENT" "$sitemap" | grep -oE '<loc>[^<]+</loc>' | sed -e 's/<loc>//g' -e 's|</loc>||g' | while read -r url; do
             echo "Visiting: $url"
-            http_status=$(curl -s -o /dev/null -w "%{http_code}" "$url")
+            http_status=$(curl -s -A "$USER_AGENT" -o /dev/null -w "%{http_code}" "$url")
             log_entry "$url - Status: <span class='status'>$http_status</span>"
             sleep 1
         done
