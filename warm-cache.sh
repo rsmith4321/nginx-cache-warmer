@@ -56,7 +56,7 @@ EOF
 fi
 
 # Initialize temporary log file with section header
-CURRENT_TIME=$(TZ=$TIME_ZONE date '+%Y-%m-%d %H:%M:%S')
+CURRENT_TIME=$(TZ=$TIME_ZONE date '+%Y-%m-%d %H:%M:%S %Z')
 cat > "$TEMP_LOG" <<EOF
     <div class="log-section">
         <div class="section-header">Cache Warming Session - $CURRENT_TIME</div>
