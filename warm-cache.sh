@@ -1,3 +1,5 @@
+#Warm Cache Script
+#https://www.ryansmithphotography.com
 #!/bin/bash
 
 set -e  # Exit immediately if a command exits with a non-zero status
