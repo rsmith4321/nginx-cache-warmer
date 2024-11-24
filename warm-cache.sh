@@ -1,26 +1,37 @@
-#Warm Cache Script
-#https://www.ryansmithphotography.com
 #!/bin/bash
-
 set -e  # Exit immediately if a command exits with a non-zero status
 
+# Configuration
 SITEMAP_INDEX_URL="https://example.com/sitemap.xml"  # Change to your sitemap URL
 TIME_ZONE="${1:-UTC}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG_FILE="$SCRIPT_DIR/index.html"
 TEMP_LOG="$SCRIPT_DIR/temp_log.txt"
+LOGS_DIR="$SCRIPT_DIR/logs"
+LOG_RETENTION_DAYS=7
 
 # Define User-Agent string
 USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
-# Create or rotate log file
-if [ -f "$LOG_FILE" ] && [ "$(find "$LOG_FILE" -mmin +1440)" ]; then
-    mv "$LOG_FILE" "$SCRIPT_DIR/logs/index_$(TZ=$TIME_ZONE date +%Y-%m-%d_%H-%M-%S).html"
-fi
+# Ensure logs directory exists
+mkdir -p "$LOGS_DIR"
+
+# Improved log rotation logic
+rotate_logs() {
+    local current_date=$(TZ=$TIME_ZONE date +%Y-%m-%d_%H-%M-%S)
+    if [ -f "$LOG_FILE" ]; then
+        local file_age=$(find "$LOG_FILE" -mtime +1 -print)
+        if [ ! -z "$file_age" ]; then
+            mv "$LOG_FILE" "$LOGS_DIR/index_${current_date}.html"
+        fi
+    fi
+}
+
+# Initialize or rotate log file
+rotate_logs
 
 # Initialize log file if it doesn't exist
 if [ ! -f "$LOG_FILE" ]; then
-    mkdir -p "$SCRIPT_DIR/logs"
     cat > "$LOG_FILE" <<EOF
 <!DOCTYPE html>
 <html lang="en">
@@ -29,7 +40,7 @@ if [ ! -f "$LOG_FILE" ]; then
     <title>Cache Warming Log</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 10px; background-color: #f4f4f9; font-size: 12px; }
-        .log-entry { padding: 2px 0; line-height: 0; }
+        .log-entry { padding: 2px 0; line-height: 1.4; }
         .success { color: green; }
         .error { color: red; font-weight: bold; }
         .status { color: blue; }
@@ -93,9 +104,8 @@ log_entry "Starting cache warming session..."
 } || {
     log_entry "Failed to process sitemap" "error"
     echo "    </div>" >> "$TEMP_LOG"
-    # Insert the new section at the top of the log container
     sed -i.bak "/class=\"log-container\">/r $TEMP_LOG" "$LOG_FILE"
-    rm "$LOG_FILE.bak" "$TEMP_LOG"
+    rm -f "$LOG_FILE.bak" "$TEMP_LOG"
     exit 1
 }
 
@@ -106,7 +116,7 @@ echo "    </div>" >> "$TEMP_LOG"
 
 # Insert the new section at the top of the log container
 sed -i.bak "/class=\"log-container\">/r $TEMP_LOG" "$LOG_FILE"
-rm "$LOG_FILE.bak" "$TEMP_LOG"
+rm -f "$LOG_FILE.bak" "$TEMP_LOG"
 
-# Clean up old logs
-find "$SCRIPT_DIR/logs" -type f -name "index_*.html" -mtime +7 -exec rm {} \;
+# Clean up old logs (improved with error handling)
+find "$LOGS_DIR" -type f -name "index_*.html" -mtime +$LOG_RETENTION_DAYS -delete 2>/dev/null || true
