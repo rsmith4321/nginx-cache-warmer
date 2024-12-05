@@ -5,8 +5,6 @@ set -e  # Exit immediately if a command exits with a non-zero status
 SITEMAP_INDEX_URL="https://example.com/sitemap.xml"  # Change to your sitemap URL
 TIME_ZONE="${1:-UTC}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-LOG_FILE="$SCRIPT_DIR/index.html"
-TEMP_LOG="$SCRIPT_DIR/temp_log.txt"
 LOGS_DIR="$SCRIPT_DIR/logs"
 LOG_RETENTION_DAYS=7
 
@@ -16,28 +14,19 @@ USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
 # Ensure logs directory exists
 mkdir -p "$LOGS_DIR"
 
-# Improved log rotation logic
-rotate_logs() {
-    local current_date=$(TZ=$TIME_ZONE date +%Y-%m-%d_%H-%M-%S)
-    if [ -f "$LOG_FILE" ]; then
-        local file_age=$(find "$LOG_FILE" -mtime +1 -print)
-        if [ ! -z "$file_age" ]; then
-            mv "$LOG_FILE" "$LOGS_DIR/index_${current_date}.html"
-        fi
-    fi
-}
+# Generate daily log file name
+current_date=$(TZ=$TIME_ZONE date '+%Y-%m-%d')
+LOG_FILE="$LOGS_DIR/index_$current_date.html"
 
-# Initialize or rotate log file
-rotate_logs
-
-# Initialize log file if it doesn't exist
-if [ ! -f "$LOG_FILE" ]; then
-    cat > "$LOG_FILE" <<EOF
+# Function to initialize the log file
+initialize_log_file() {
+    if [ ! -f "$LOG_FILE" ]; then
+        cat > "$LOG_FILE" <<EOF
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Cache Warming Log</title>
+    <title>Cache Warming Log - $current_date</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 10px; background-color: #f4f4f9; font-size: 12px; }
         .log-entry { padding: 2px 0; line-height: 1.4; }
@@ -54,8 +43,7 @@ if [ ! -f "$LOG_FILE" ]; then
         }
         .section-header {
             font-size: 14px;
-            font-weight: bold;
-            color: #333;
+            font-weight: bold; color: #333;
             margin-bottom: 10px;
             padding-bottom: 5px;
             border-bottom: 1px solid #eee;
@@ -63,20 +51,14 @@ if [ ! -f "$LOG_FILE" ]; then
     </style>
 </head>
 <body>
-    <h1>Cache Warming Log - $(TZ=$TIME_ZONE date '+%Y-%m-%d')</h1>
+    <h1>Cache Warming Log - $current_date</h1>
     <div class="log-container">
     </div>
 </body>
 </html>
 EOF
-fi
-
-# Initialize temporary log file with section header
-CURRENT_TIME=$(TZ=$TIME_ZONE date '+%Y-%m-%d %H:%M:%S %Z')
-cat > "$TEMP_LOG" <<EOF
-    <div class="log-section">
-        <div class="section-header">Cache Warming Session - $CURRENT_TIME</div>
-EOF
+    fi
+}
 
 # Function to add log entry
 log_entry() {
@@ -85,6 +67,17 @@ log_entry() {
     local timestamp=$(TZ=$TIME_ZONE date '+%Y-%m-%d %H:%M:%S')
     echo "        <p class='log-entry${class:+ }${class}'><span class='timestamp'>[$timestamp]</span> $message</p>" >> "$TEMP_LOG"
 }
+
+# Rotate logs and initialize today's log
+initialize_log_file
+
+# Initialize temporary log file with section header
+TEMP_LOG="$SCRIPT_DIR/temp_log.txt"
+CURRENT_TIME=$(TZ=$TIME_ZONE date '+%Y-%m-%d %H:%M:%S %Z')
+cat > "$TEMP_LOG" <<EOF
+    <div class="log-section">
+        <div class="section-header">Cache Warming Session - $CURRENT_TIME</div>
+EOF
 
 # Start logging
 log_entry "Starting cache warming session..."
@@ -118,5 +111,5 @@ echo "    </div>" >> "$TEMP_LOG"
 sed -i.bak "/class=\"log-container\">/r $TEMP_LOG" "$LOG_FILE"
 rm -f "$LOG_FILE.bak" "$TEMP_LOG"
 
-# Clean up old logs (improved with error handling)
-find "$LOGS_DIR" -type f -name "index_*.html" -mtime +$LOG_RETENTION_DAYS -delete 2>/dev/null || true
+# Clean up old logs
+find "$LOGS_DIR" -type f -name "index_*.html" -mtime +$LOG_RETENTION_DAYS -exec rm -f {} \; || true
